@@ -12,6 +12,11 @@ Private mIsActive As Boolean
 Private mIsDutyBackup As Boolean
 Private mIsIntensiveCandidate As Boolean
 
+Private mRotationState As String
+Private mIntensiveCount As Long
+Private mLastIntensiveDate As Date
+Private mHasLastIntensiveDate As Boolean
+
 ' Purpose: Initializes the object with safe default values.
 Private Sub Class_Initialize()
     InitializeDefaults
@@ -29,6 +34,51 @@ End Sub
 ' Purpose: Returns the employee identifier.
 Public Property Get Id() As String
     Id = mId
+End Property
+
+Public Property Get RotationState() As String
+    RotationState = mRotationState
+End Property
+
+Public Property Let RotationState(ByVal Value As String)
+    mRotationState = Trim$(Value)
+End Property
+
+Public Property Get IntensiveCount() As Long
+    IntensiveCount = mIntensiveCount
+End Property
+
+Public Property Let IntensiveCount(ByVal Value As Long)
+    If Value < 0 Then
+        Err.Raise vbObjectError + 1500, _
+                  "clsOperari.IntensiveCount", _
+                  "El nombre d'intensius no pot ser negatiu."
+    End If
+
+    mIntensiveCount = Value
+End Property
+
+Public Property Get HasLastIntensiveDate() As Boolean
+    HasLastIntensiveDate = mHasLastIntensiveDate
+End Property
+
+Public Property Get LastIntensiveDate() As Date
+
+    If Not mHasLastIntensiveDate Then
+        Err.Raise vbObjectError + 1501, _
+                  "clsOperari.LastIntensiveDate", _
+                  "L'operari encara no té cap intensiu registrat."
+    End If
+
+    LastIntensiveDate = mLastIntensiveDate
+
+End Property
+
+Public Property Let LastIntensiveDate(ByVal Value As Date)
+
+    mLastIntensiveDate = Value
+    mHasLastIntensiveDate = True
+
 End Property
 
 ' Purpose: Sets the employee identifier.
@@ -130,6 +180,13 @@ Public Function Clone() As clsOperari
     employee.IsActive = Me.IsActive
     employee.IsDutyBackup = Me.IsDutyBackup
     employee.IsIntensiveCandidate = Me.IsIntensiveCandidate
+
+    employee.RotationState = Me.RotationState
+    employee.IntensiveCount = Me.IntensiveCount
+
+    If Me.HasLastIntensiveDate Then
+        employee.LastIntensiveDate = Me.LastIntensiveDate
+    End If
 
     Set Clone = employee
 
