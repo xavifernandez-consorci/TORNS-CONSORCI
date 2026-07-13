@@ -244,6 +244,36 @@ Private Sub CreateDailyAssignment( _
 End Sub
 
 '===============================================================================
+' Creates one intensive assignment in memory.
+'
+' This helper centralizes the creation of intensive assignments so that
+' InsertIntensiveWeeks() only coordinates the algorithm.
+'===============================================================================
+Private Function BuildIntensiveAssignment( _
+    ByVal Employee As clsOperari, _
+    ByVal AssignmentDate As Date) As clsShiftAssignment
+
+    Dim assignment As clsShiftAssignment
+
+    Set assignment = New clsShiftAssignment
+
+    Set assignment.Employee = Employee
+
+    assignment.AssignmentDate = AssignmentDate
+
+    ' TODO:
+    ' The intensive shift code will eventually come from clsConfiguracio.
+    assignment.ShiftCode = "I"
+
+    assignment.IsIntensive = True
+    assignment.IsPrimaryDuty = True
+    assignment.IsBackupDuty = False
+
+    Set BuildIntensiveAssignment = assignment
+
+End Function
+
+'===============================================================================
 ' Returns every Thursday contained in the planning period.
 '
 ' These dates are candidates for the start of an intensive block.
