@@ -295,6 +295,99 @@ Private Sub CreateDailyAssignment( _
 End Sub
 
 '===============================================================================
+' Returns the next employee that must perform an intensive rotation.
+'===============================================================================
+Private Function SelectNextIntensiveOperator( _
+    ByVal Context As clsScheduleContext) As clsOperari
+
+    Dim employee As clsOperari
+    Dim selected As clsOperari
+
+    For Each employee In Context.Employees
+
+        If employee.IsActive Then
+
+            If employee.IsIntensiveCandidate Then
+
+                If selected Is Nothing Then
+
+                    Set selected = employee
+
+                Else
+
+                    If employee.IntensiveCount < selected.IntensiveCount Then
+
+                        Set selected = employee
+
+                    ElseIf employee.IntensiveCount = selected.IntensiveCount Then
+
+                        If CompareLastIntensive(employee, selected) < 0 Then
+                            Set selected = employee
+                        End If
+
+                    End If
+
+                End If
+
+            End If
+
+        End If
+
+    Next employee
+
+    Set SelectNextIntensiveOperator = selected
+
+End Function
+
+'===============================================================================
+' Compares two employees by their last intensive date.
+'
+' Returns:
+'   -1 = First employee should be selected
+'    0 = Equal
+'    1 = Second employee should be selected
+'===============================================================================
+Private Function CompareLastIntensive( _
+    ByVal First As clsOperari, _
+    ByVal Second As clsOperari) As Long
+
+    If Not First.HasLastIntensiveDate Then
+
+        If Not Second.HasLastIntensiveDate Then
+            CompareLastIntensive = 0
+        Else
+            CompareLastIntensive = -1
+        End If
+
+        Exit Function
+
+    End If
+
+    If Not Second.HasLastIntensiveDate Then
+
+        CompareLastIntensive = 1
+        Exit Function
+
+    End If
+
+    If First.LastIntensiveDate < Second.LastIntensiveDate Then
+
+        CompareLastIntensive = -1
+
+    ElseIf First.LastIntensiveDate > Second.LastIntensiveDate Then
+
+        CompareLastIntensive = 1
+
+    Else
+
+        CompareLastIntensive = 0
+
+    End If
+
+End Function
+
+
+'===============================================================================
 ' Raises a controlled service-layer error.
 '===============================================================================
 Private Sub RaiseRotationError( _
