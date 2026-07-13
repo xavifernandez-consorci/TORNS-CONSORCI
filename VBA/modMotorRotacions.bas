@@ -62,7 +62,7 @@ Public Sub GenerateSchedule(ByVal Context As clsScheduleContext)
     PrepareScheduleGeneration Context
 
     ' Phase 2:
-    ' GenerateBaseRotation Context
+      GenerateBaseRotation Context
     '
     ' Phase 3:
     ' ApplyIntensiveRotation Context
@@ -214,6 +214,58 @@ Private Sub ValidateEmployees(ByVal Context As clsScheduleContext)
                 Description:="Hi ha un operari amb dades obligatòries incompletes."
         End If
     Next employeeItem
+End Sub
+
+'===============================================================================
+' Generates the base Morning/Afternoon cycle.
+'
+' Phase 2 implementation:
+'   - Morning weeks
+'   - Afternoon weeks
+'
+' Intensive rotation is intentionally excluded from this phase.
+'===============================================================================
+Private Sub GenerateBaseRotation(ByVal Context As clsScheduleContext)
+
+    Dim currentDate As Date
+    Dim employeeIndex As Long
+    Dim employee As clsOperari
+
+    Dim morningWeeks As Long
+    Dim afternoonWeeks As Long
+
+    Dim weekCounter As Long
+    Dim shiftCode As String
+
+    morningWeeks = Context.Configuration.MorningWeeks
+    afternoonWeeks = Context.Configuration.AfternoonWeeks
+
+    currentDate = Context.StartDate
+
+    employeeIndex = 1
+
+    Do While currentDate <= Context.EndDate
+
+        Set employee = Context.Employees(employeeIndex)
+
+        weekCounter = DateDiff("ww", Context.StartDate, currentDate, vbMonday)
+
+        If (weekCounter Mod (morningWeeks + afternoonWeeks)) < morningWeeks Then
+            shiftCode = "M"
+        Else
+            shiftCode = "T"
+        End If
+
+        CreateDailyAssignment _
+            Context:=Context, _
+            Employee:=employee, _
+            AssignmentDate:=currentDate, _
+            ShiftCode:=shiftCode
+
+        currentDate = currentDate + 1
+
+    Loop
+
 End Sub
 
 '===============================================================================
