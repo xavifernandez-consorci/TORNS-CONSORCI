@@ -269,6 +269,32 @@ Private Sub GenerateBaseRotation(ByVal Context As clsScheduleContext)
 End Sub
 
 '===============================================================================
+' Creates one assignment in memory.
+'===============================================================================
+Private Sub CreateDailyAssignment( _
+    ByVal Context As clsScheduleContext, _
+    ByVal Employee As clsOperari, _
+    ByVal AssignmentDate As Date, _
+    ByVal ShiftCode As String)
+
+    Dim assignment As clsShiftAssignment
+
+    Set assignment = New clsShiftAssignment
+
+    Set assignment.Employee = Employee
+
+    assignment.AssignmentDate = AssignmentDate
+    assignment.ShiftCode = ShiftCode
+
+    assignment.IsIntensive = False
+    assignment.IsPrimaryDuty = False
+    assignment.IsBackupDuty = False
+
+    Context.AddAssignment assignment
+
+End Sub
+
+'===============================================================================
 ' Raises a controlled service-layer error.
 '===============================================================================
 Private Sub RaiseRotationError( _
