@@ -7,26 +7,37 @@ Option Explicit
 ' Component:    modMotorRotacions
 ' Layer:        Service
 '
+' Version:      1.0
+'
 ' Purpose:
-'   Coordinate generation of employee shift rotations.
+'   Coordinate the in-memory generation of employee shift rotations.
 '
-' Current phase:
-'   Phase 1 - Validate and prepare the scheduling context.
+' Included in this version:
+'   - Scheduling context validation.
+'   - Safe generation lifecycle.
+'   - Base Morning/Afternoon rotation.
+'   - Detection of intensive-period start dates.
+'   - Selection of the next intensive operator.
+'   - Creation of in-memory shift assignments.
 '
-' Responsibilities:
-'   - Validate the schedule context.
-'   - Prepare an in-memory generation operation.
-'   - Clear previously generated in-memory assignments.
-'   - Expose the public scheduling entry point.
+' Not included yet:
+'   - Intensive assignment insertion.
+'   - Post-intensive sequence.
+'   - Duty backup assignment.
+'   - Persistence.
+'   - Worksheet or calendar modification.
 '
 ' Restrictions:
 '   - No worksheet or range access.
 '   - No automatic persistence.
-'   - No calendar modification.
-'   - Duty assignments belong to modGuardies.
+'   - No form or message-box interaction.
+'   - Duty backup logic belongs to modGuardies.
 '===============================================================================
 
 Private Const MODULE_NAME As String = "modMotorRotacions"
+
+Private Const SHIFT_CODE_MORNING As String = "M"
+Private Const SHIFT_CODE_AFTERNOON As String = "T"
 
 Private Const ERR_CONTEXT_REQUIRED As Long = vbObjectError + 2000
 Private Const ERR_CONFIGURATION_REQUIRED As Long = vbObjectError + 2001
@@ -41,12 +52,13 @@ Private mIsGenerating As Boolean
 '===============================================================================
 ' Public scheduling entry point.
 '
-' This first implementation validates and prepares the context only.
-' Subsequent phases will append generated assignments to Context.Assignments.
-'
-' Nothing is written to worksheets or persisted automatically.
+' The generated assignments remain in Context.Assignments.
+' Nothing is persisted or written to Excel automatically.
 '===============================================================================
 Public Sub GenerateSchedule(ByVal Context As clsScheduleContext)
+
+    Dim intensiveStartDates As Collection
+
     On Error GoTo ErrorHandler
 
     If mIsGenerating Then
@@ -61,34 +73,40 @@ Public Sub GenerateSchedule(ByVal Context As clsScheduleContext)
     ValidateScheduleContext Context
     PrepareScheduleGeneration Context
 
-    ' Phase 2:
-      GenerateBaseRotation Context
+    GenerateBaseRotation Context
+
+    Set intensiveStartDates = GetIntensiveStartDates(Context)
+
+    ' Version 1.1:
+    ' InsertIntensiveWeeks Context, intensiveStartDates
     '
-    ' Phase 3:
-    ' ApplyIntensiveRotation Context
-    '
-    ' Phase 4:
+    ' Version 1.2:
     ' ApplyPostIntensiveSequence Context
     '
-    ' Duty assignments will be coordinated through modGuardies.
+    ' Version 1.3:
+    ' ValidateGeneratedSchedule Context
 
 CleanExit:
+    Set intensiveStartDates = Nothing
     mIsGenerating = False
     Exit Sub
 
 ErrorHandler:
+    Set intensiveStartDates = Nothing
     mIsGenerating = False
 
     Err.Raise _
         Number:=Err.Number, _
         Source:=MODULE_NAME & ".GenerateSchedule", _
         Description:=Err.Description
+
 End Sub
 
 '===============================================================================
 ' Validates every dependency required before schedule generation.
 '===============================================================================
 Public Sub ValidateScheduleContext(ByVal Context As clsScheduleContext)
+
     On Error GoTo ErrorHandler
 
     If Context Is Nothing Then
@@ -116,28 +134,244 @@ ErrorHandler:
         Number:=Err.Number, _
         Source:=MODULE_NAME & ".ValidateScheduleContext", _
         Description:=Err.Description
+
 End Sub
 
 '===============================================================================
 ' Indicates whether the rotation motor is currently running.
 '===============================================================================
 Public Property Get IsGenerating() As Boolean
+
     IsGenerating = mIsGenerating
+
 End Property
 
 '===============================================================================
-' Clears prior in-memory results before starting a new generation.
+' Clears previous in-memory results before a new generation.
 '
-' This operation does not modify worksheets or persisted calendar data.
+' Persistent calendar data is not modified.
 '===============================================================================
 Private Sub PrepareScheduleGeneration(ByVal Context As clsScheduleContext)
+
     Context.ClearAssignments
+
 End Sub
+
+'===============================================================================
+' Generates the base Morning/Afternoon cycle for every active employee.
+'
+' The cycle length comes from the active configuration.
+' Intensive periods are not applied in this version.
+'===============================================================================
+Private Sub GenerateBaseRotation(ByVal Context As clsScheduleContext)
+
+    Dim currentDate As Date
+    Dim weekIndex As Long
+    Dim cyclePosition As Long
+    Dim cycleLength As Long
+    Dim shiftCode As String
+
+    Dim employeeItem As Variant
+    Dim employee As clsOperari
+
+    cycleLength = _
+        Context.Configuration.MorningWeeks + _
+        Context.Configuration.AfternoonWeeks
+
+    currentDate = Context.StartDate
+
+    Do While currentDate <= Context.EndDate
+
+        weekIndex = DateDiff( _
+            Interval:="ww", _
+            Date1:=Context.StartDate, _
+            Date2:=currentDate, _
+            FirstDayOfWeek:=vbMonday)
+
+        cyclePosition = weekIndex Mod cycleLength
+
+        If cyclePosition < Context.Configuration.MorningWeeks Then
+            shiftCode = SHIFT_CODE_MORNING
+        Else
+            shiftCode = SHIFT_CODE_AFTERNOON
+        End If
+
+        For Each employeeItem In Context.Employees
+
+            Set employee = employeeItem
+
+            If employee.IsActive Then
+                CreateDailyAssignment _
+                    Context:=Context, _
+                    Employee:=employee, _
+                    AssignmentDate:=currentDate, _
+                    ShiftCode:=shiftCode
+            End If
+
+        Next employeeItem
+
+        currentDate = DateAdd("d", 1, currentDate)
+
+    Loop
+
+End Sub
+
+'===============================================================================
+' Creates one shift assignment in memory.
+'===============================================================================
+Private Sub CreateDailyAssignment( _
+    ByVal Context As clsScheduleContext, _
+    ByVal Employee As clsOperari, _
+    ByVal AssignmentDate As Date, _
+    ByVal ShiftCode As String)
+
+    Dim assignment As clsShiftAssignment
+
+    Set assignment = New clsShiftAssignment
+
+    Set assignment.Employee = Employee
+
+    assignment.AssignmentDate = AssignmentDate
+    assignment.ShiftCode = ShiftCode
+    assignment.IsIntensive = False
+    assignment.IsPrimaryDuty = False
+    assignment.IsBackupDuty = False
+
+    Context.AddAssignment assignment
+
+    Set assignment = Nothing
+
+End Sub
+
+'===============================================================================
+' Returns every Thursday contained in the planning period.
+'
+' These dates are candidates for the start of an intensive block.
+'===============================================================================
+Private Function GetIntensiveStartDates( _
+    ByVal Context As clsScheduleContext) As Collection
+
+    Dim result As Collection
+    Dim currentDate As Date
+
+    Set result = New Collection
+
+    currentDate = Context.StartDate
+
+    Do While currentDate <= Context.EndDate
+
+        If Weekday(currentDate, vbMonday) = 4 Then
+            result.Add currentDate
+        End If
+
+        currentDate = DateAdd("d", 1, currentDate)
+
+    Loop
+
+    Set GetIntensiveStartDates = result
+
+End Function
+
+'===============================================================================
+' Returns the next eligible employee for an intensive rotation.
+'
+' Selection priority:
+'   1. Active employee.
+'   2. Intensive candidate.
+'   3. Lowest accumulated intensive count.
+'   4. Oldest last-intensive date.
+'   5. Stable collection order.
+'===============================================================================
+Private Function SelectNextIntensiveOperator( _
+    ByVal Context As clsScheduleContext) As clsOperari
+
+    Dim employeeItem As Variant
+    Dim employee As clsOperari
+    Dim selectedEmployee As clsOperari
+
+    For Each employeeItem In Context.Employees
+
+        Set employee = employeeItem
+
+        If employee.IsActive And employee.IsIntensiveCandidate Then
+
+            If selectedEmployee Is Nothing Then
+
+                Set selectedEmployee = employee
+
+            ElseIf employee.IntensiveCount < selectedEmployee.IntensiveCount Then
+
+                Set selectedEmployee = employee
+
+            ElseIf employee.IntensiveCount = selectedEmployee.IntensiveCount Then
+
+                If CompareLastIntensive( _
+                    FirstEmployee:=employee, _
+                    SecondEmployee:=selectedEmployee) < 0 Then
+
+                    Set selectedEmployee = employee
+
+                End If
+
+            End If
+
+        End If
+
+    Next employeeItem
+
+    Set SelectNextIntensiveOperator = selectedEmployee
+
+End Function
+
+'===============================================================================
+' Compares employees by their last intensive date.
+'
+' Return values:
+'   -1: FirstEmployee has priority.
+'    0: Both have equal priority.
+'    1: SecondEmployee has priority.
+'
+' An employee without previous intensives has priority over an employee that
+' already has a registered intensive date.
+'===============================================================================
+Private Function CompareLastIntensive( _
+    ByVal FirstEmployee As clsOperari, _
+    ByVal SecondEmployee As clsOperari) As Long
+
+    If Not FirstEmployee.HasLastIntensiveDate Then
+
+        If Not SecondEmployee.HasLastIntensiveDate Then
+            CompareLastIntensive = 0
+        Else
+            CompareLastIntensive = -1
+        End If
+
+        Exit Function
+
+    End If
+
+    If Not SecondEmployee.HasLastIntensiveDate Then
+        CompareLastIntensive = 1
+        Exit Function
+    End If
+
+    If FirstEmployee.LastIntensiveDate < SecondEmployee.LastIntensiveDate Then
+        CompareLastIntensive = -1
+
+    ElseIf FirstEmployee.LastIntensiveDate > SecondEmployee.LastIntensiveDate Then
+        CompareLastIntensive = 1
+
+    Else
+        CompareLastIntensive = 0
+    End If
+
+End Function
 
 '===============================================================================
 ' Validates the active configuration.
 '===============================================================================
 Private Sub ValidateConfiguration(ByVal Context As clsScheduleContext)
+
     Dim configuration As clsConfiguracio
 
     Set configuration = Context.Configuration
@@ -155,12 +389,16 @@ Private Sub ValidateConfiguration(ByVal Context As clsScheduleContext)
             ProcedureName:="ValidateConfiguration", _
             Description:="La configuració activa no és vàlida."
     End If
+
+    Set configuration = Nothing
+
 End Sub
 
 '===============================================================================
-' Validates that the planning period exists and has a valid date range.
+' Validates the planning period.
 '===============================================================================
 Private Sub ValidatePlanningPeriod(ByVal Context As clsScheduleContext)
+
     If Not Context.HasPlanningPeriod Then
         RaiseRotationError _
             ErrorNumber:=ERR_PLANNING_PERIOD_REQUIRED, _
@@ -174,12 +412,14 @@ Private Sub ValidatePlanningPeriod(ByVal Context As clsScheduleContext)
             ProcedureName:="ValidatePlanningPeriod", _
             Description:="El període de planificació no és vàlid."
     End If
+
 End Sub
 
 '===============================================================================
 ' Validates the employee collection.
 '===============================================================================
 Private Sub ValidateEmployees(ByVal Context As clsScheduleContext)
+
     Dim employeeItem As Variant
     Dim employee As clsOperari
 
@@ -191,18 +431,19 @@ Private Sub ValidateEmployees(ByVal Context As clsScheduleContext)
     End If
 
     For Each employeeItem In Context.Employees
+
         If Not IsObject(employeeItem) Then
             RaiseRotationError _
                 ErrorNumber:=ERR_INVALID_EMPLOYEE, _
                 ProcedureName:="ValidateEmployees", _
-                Description:="La col·lecció conté un element que no és un operari."
+                Description:="La col·lecció conté un element que no és un objecte."
         End If
 
         If Not TypeOf employeeItem Is clsOperari Then
             RaiseRotationError _
                 ErrorNumber:=ERR_INVALID_EMPLOYEE, _
                 ProcedureName:="ValidateEmployees", _
-                Description:="La col·lecció conté un objecte d'un tipus incorrecte."
+                Description:="La col·lecció conté un objecte que no és un operari."
         End If
 
         Set employee = employeeItem
@@ -213,179 +454,10 @@ Private Sub ValidateEmployees(ByVal Context As clsScheduleContext)
                 ProcedureName:="ValidateEmployees", _
                 Description:="Hi ha un operari amb dades obligatòries incompletes."
         End If
+
     Next employeeItem
-End Sub
-
-'===============================================================================
-' Generates the base Morning/Afternoon cycle.
-'
-' Phase 2 implementation:
-'   - Morning weeks
-'   - Afternoon weeks
-'
-' Intensive rotation is intentionally excluded from this phase.
-'===============================================================================
-Private Sub GenerateBaseRotation(ByVal Context As clsScheduleContext)
-
-    Dim currentDate As Date
-    Dim employeeIndex As Long
-    Dim employee As clsOperari
-
-    Dim morningWeeks As Long
-    Dim afternoonWeeks As Long
-
-    Dim weekCounter As Long
-    Dim shiftCode As String
-
-    morningWeeks = Context.Configuration.MorningWeeks
-    afternoonWeeks = Context.Configuration.AfternoonWeeks
-
-    currentDate = Context.StartDate
-
-    employeeIndex = 1
-
-    Do While currentDate <= Context.EndDate
-
-        Set employee = Context.Employees(employeeIndex)
-
-        weekCounter = DateDiff("ww", Context.StartDate, currentDate, vbMonday)
-
-        If (weekCounter Mod (morningWeeks + afternoonWeeks)) < morningWeeks Then
-            shiftCode = "M"
-        Else
-            shiftCode = "T"
-        End If
-
-        CreateDailyAssignment _
-            Context:=Context, _
-            Employee:=employee, _
-            AssignmentDate:=currentDate, _
-            ShiftCode:=shiftCode
-
-        currentDate = currentDate + 1
-
-    Loop
 
 End Sub
-
-'===============================================================================
-' Creates one assignment in memory.
-'===============================================================================
-Private Sub CreateDailyAssignment( _
-    ByVal Context As clsScheduleContext, _
-    ByVal Employee As clsOperari, _
-    ByVal AssignmentDate As Date, _
-    ByVal ShiftCode As String)
-
-    Dim assignment As clsShiftAssignment
-
-    Set assignment = New clsShiftAssignment
-
-    Set assignment.Employee = Employee
-
-    assignment.AssignmentDate = AssignmentDate
-    assignment.ShiftCode = ShiftCode
-
-    assignment.IsIntensive = False
-    assignment.IsPrimaryDuty = False
-    assignment.IsBackupDuty = False
-
-    Context.AddAssignment assignment
-
-End Sub
-
-'===============================================================================
-' Returns the next employee that must perform an intensive rotation.
-'===============================================================================
-Private Function SelectNextIntensiveOperator( _
-    ByVal Context As clsScheduleContext) As clsOperari
-
-    Dim employee As clsOperari
-    Dim selected As clsOperari
-
-    For Each employee In Context.Employees
-
-        If employee.IsActive Then
-
-            If employee.IsIntensiveCandidate Then
-
-                If selected Is Nothing Then
-
-                    Set selected = employee
-
-                Else
-
-                    If employee.IntensiveCount < selected.IntensiveCount Then
-
-                        Set selected = employee
-
-                    ElseIf employee.IntensiveCount = selected.IntensiveCount Then
-
-                        If CompareLastIntensive(employee, selected) < 0 Then
-                            Set selected = employee
-                        End If
-
-                    End If
-
-                End If
-
-            End If
-
-        End If
-
-    Next employee
-
-    Set SelectNextIntensiveOperator = selected
-
-End Function
-
-'===============================================================================
-' Compares two employees by their last intensive date.
-'
-' Returns:
-'   -1 = First employee should be selected
-'    0 = Equal
-'    1 = Second employee should be selected
-'===============================================================================
-Private Function CompareLastIntensive( _
-    ByVal First As clsOperari, _
-    ByVal Second As clsOperari) As Long
-
-    If Not First.HasLastIntensiveDate Then
-
-        If Not Second.HasLastIntensiveDate Then
-            CompareLastIntensive = 0
-        Else
-            CompareLastIntensive = -1
-        End If
-
-        Exit Function
-
-    End If
-
-    If Not Second.HasLastIntensiveDate Then
-
-        CompareLastIntensive = 1
-        Exit Function
-
-    End If
-
-    If First.LastIntensiveDate < Second.LastIntensiveDate Then
-
-        CompareLastIntensive = -1
-
-    ElseIf First.LastIntensiveDate > Second.LastIntensiveDate Then
-
-        CompareLastIntensive = 1
-
-    Else
-
-        CompareLastIntensive = 0
-
-    End If
-
-End Function
-
 
 '===============================================================================
 ' Raises a controlled service-layer error.
@@ -399,4 +471,5 @@ Private Sub RaiseRotationError( _
         Number:=ErrorNumber, _
         Source:=MODULE_NAME & "." & ProcedureName, _
         Description:=Description
+
 End Sub
