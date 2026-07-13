@@ -1,0 +1,19 @@
+TORNS-CONSORCI/
+  VBA/
+    ThisWorkbook.cls
+    modApplicationBootstrap.bas
+    modConfiguration.bas
+    modDataAccess.bas
+    modMotorRotacions.bas
+    modGuardies.bas
+    clsConfiguracio.cls
+    clsOperari.cls
+    clsScheduleContext.cls
+    clsShiftAssignment.cls
+  Forms/
+    frmInici.frm
+    frmConfiguration.frm
+    frmPlanificacio.frm
+  Documentation/
+    ARCHITECTURE.md
+    PROJECT_STRUCTURE.txt
