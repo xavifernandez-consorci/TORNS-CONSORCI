@@ -115,3 +115,33 @@ End Property
 Public Property Let IsIntensiveCandidate(ByVal value As Boolean)
     mIsIntensiveCandidate = value
 End Property
+
+'===============================================================================
+' Creates a deep copy of the current employee.
+'===============================================================================
+Public Function Clone() As clsOperari
+
+    Dim employee As clsOperari
+
+    Set employee = New clsOperari
+
+    employee.Id = Me.Id
+    employee.Name = Me.Name
+    employee.IsActive = Me.IsActive
+    employee.IsDutyBackup = Me.IsDutyBackup
+    employee.IsIntensiveCandidate = Me.IsIntensiveCandidate
+
+    Set Clone = employee
+
+End Function
+
+'===============================================================================
+' Indicates whether the object contains a valid employee.
+'===============================================================================
+Public Function IsValid() As Boolean
+
+    IsValid = _
+        Len(mId) > 0 _
+        And Len(mName) > 0
+
+End Function
