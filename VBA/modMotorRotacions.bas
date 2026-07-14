@@ -77,8 +77,44 @@ Public Sub GenerateSchedule(ByVal Context As clsScheduleContext)
 
     Set intensiveStartDates = GetIntensiveStartDates(Context)
 
+'===============================================================================
+' DEBUG
+' Shows which employee would be selected for every intensive week.
+'===============================================================================
+Private Sub InsertIntensiveWeeks( _
+    ByVal Context As clsScheduleContext, _
+    ByVal IntensiveWeeks As Collection)
+
+    Dim intensiveDate As Variant
+    Dim employee As clsOperari
+
+    Debug.Print String(70, "-")
+    Debug.Print "INTENSIVE ROTATION PREVIEW"
+    Debug.Print String(70, "-")
+
+    For Each intensiveDate In IntensiveWeeks
+
+        Set employee = SelectNextIntensiveOperator(Context)
+
+        If employee Is Nothing Then
+
+            Debug.Print Format$(intensiveDate, "dd/mm/yyyy"); _
+                        " -> CAP OPERARI DISPONIBLE"
+
+        Else
+
+            Debug.Print Format$(intensiveDate, "dd/mm/yyyy"); _
+                        " -> "; _
+                        employee.Name
+
+        End If
+
+    Next intensiveDate
+
+End Sub
+
     ' Version 1.1:
-    ' InsertIntensiveWeeks Context, intensiveStartDates
+      InsertIntensiveWeeks Context, intensiveStartDates
     '
     ' Version 1.2:
     ' ApplyPostIntensiveSequence Context
