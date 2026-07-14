@@ -1,5 +1,3 @@
-Attribute VB_Name = "modMotorRotacions"
-
 Option Explicit
 
 '===============================================================================
@@ -55,7 +53,7 @@ Private mIsGenerating As Boolean
 ' The generated assignments remain in Context.Assignments.
 ' Nothing is persisted or written to Excel automatically.
 '===============================================================================
-Public Sub GenerateSchedule(ByVal Context As clsScheduleContext)
+Public Sub GenerateSchedule(ByVal context As clsScheduleContext)
 
     Dim intensiveStartDates As Collection
 
@@ -70,57 +68,14 @@ Public Sub GenerateSchedule(ByVal Context As clsScheduleContext)
 
     mIsGenerating = True
 
-    ValidateScheduleContext Context
-    PrepareScheduleGeneration Context
+    ValidateScheduleContext context
+    PrepareScheduleGeneration context
 
-    GenerateBaseRotation Context
+    GenerateBaseRotation context
 
-    Set intensiveStartDates = GetIntensiveStartDates(Context)
+    Set intensiveStartDates = GetIntensiveStartDates(context)
 
-'===============================================================================
-' DEBUG
-' Shows which employee would be selected for every intensive week.
-'===============================================================================
-Private Sub InsertIntensiveWeeks( _
-    ByVal Context As clsScheduleContext, _
-    ByVal IntensiveWeeks As Collection)
-
-    Dim intensiveDate As Variant
-    Dim employee As clsOperari
-
-    Debug.Print String(70, "-")
-    Debug.Print "INTENSIVE ROTATION PREVIEW"
-    Debug.Print String(70, "-")
-
-    For Each intensiveDate In IntensiveWeeks
-
-        Set employee = SelectNextIntensiveOperator(Context)
-
-        If employee Is Nothing Then
-
-            Debug.Print Format$(intensiveDate, "dd/mm/yyyy"); _
-                        " -> CAP OPERARI DISPONIBLE"
-
-        Else
-
-            Debug.Print Format$(intensiveDate, "dd/mm/yyyy"); _
-                        " -> "; _
-                        employee.Name
-
-        End If
-
-    Next intensiveDate
-
-End Sub
-
-    ' Version 1.1:
-      InsertIntensiveWeeks Context, intensiveStartDates
-    '
-    ' Version 1.2:
-    ' ApplyPostIntensiveSequence Context
-    '
-    ' Version 1.3:
-    ' ValidateGeneratedSchedule Context
+    InsertIntensiveWeeks context, intensiveStartDates
 
 CleanExit:
     Set intensiveStartDates = Nothing
@@ -139,28 +94,70 @@ ErrorHandler:
 End Sub
 
 '===============================================================================
+' DEBUG
+' Shows which employee would be selected for every intensive week.
+'===============================================================================
+Private Sub InsertIntensiveWeeks( _
+    ByVal context As clsScheduleContext, _
+    ByVal IntensiveWeeks As Collection)
+
+    Dim intensiveDate As Variant
+    Dim employee As clsOperari
+
+    Debug.Print String(70, "-")
+    Debug.Print "INTENSIVE ROTATION PREVIEW"
+    Debug.Print String(70, "-")
+
+    For Each intensiveDate In IntensiveWeeks
+
+        Set employee = SelectNextIntensiveOperator(context)
+
+        If employee Is Nothing Then
+
+            Debug.Print Format$(intensiveDate, "dd/mm/yyyy"); _
+                        " -> CAP OPERARI DISPONIBLE"
+
+        Else
+
+    Debug.Print Format$(intensiveDate, "dd/mm/yyyy"); _
+                " -> "; employee.Name
+
+    ' Actualitza l'estat de l'operari perquè
+    ' la següent selecció tingui en compte aquest intensiu.
+    employee.IntensiveCount = employee.IntensiveCount + 1
+    employee.LastIntensiveDate = CDate(intensiveDate)
+
+End If
+
+    Next intensiveDate
+
+End Sub
+
+
+
+'===============================================================================
 ' Validates every dependency required before schedule generation.
 '===============================================================================
-Public Sub ValidateScheduleContext(ByVal Context As clsScheduleContext)
+Public Sub ValidateScheduleContext(ByVal context As clsScheduleContext)
 
     On Error GoTo ErrorHandler
 
-    If Context Is Nothing Then
+    If context Is Nothing Then
         RaiseRotationError _
             ErrorNumber:=ERR_CONTEXT_REQUIRED, _
             ProcedureName:="ValidateScheduleContext", _
-            Description:="El context de planificació no pot ser Nothing."
+            Description:="El context de planificacio no pot ser Nothing."
     End If
 
-    ValidateConfiguration Context
-    ValidatePlanningPeriod Context
-    ValidateEmployees Context
+    ValidateConfiguration context
+    ValidatePlanningPeriod context
+    ValidateEmployees context
 
-    If Not Context.IsReadyForScheduling Then
+    If Not context.IsReadyForScheduling Then
         RaiseRotationError _
             ErrorNumber:=ERR_CONTEXT_REQUIRED, _
             ProcedureName:="ValidateScheduleContext", _
-            Description:="El context no està preparat per generar la planificació."
+            Description:="El context no esta preparat per generar la planificacio."
     End If
 
     Exit Sub
@@ -187,9 +184,9 @@ End Property
 '
 ' Persistent calendar data is not modified.
 '===============================================================================
-Private Sub PrepareScheduleGeneration(ByVal Context As clsScheduleContext)
+Private Sub PrepareScheduleGeneration(ByVal context As clsScheduleContext)
 
-    Context.ClearAssignments
+    context.ClearAssignments
 
 End Sub
 
@@ -199,49 +196,49 @@ End Sub
 ' The cycle length comes from the active configuration.
 ' Intensive periods are not applied in this version.
 '===============================================================================
-Private Sub GenerateBaseRotation(ByVal Context As clsScheduleContext)
+Private Sub GenerateBaseRotation(ByVal context As clsScheduleContext)
 
     Dim currentDate As Date
     Dim weekIndex As Long
     Dim cyclePosition As Long
     Dim cycleLength As Long
-    Dim shiftCode As String
+    Dim ShiftCode As String
 
     Dim employeeItem As Variant
     Dim employee As clsOperari
 
     cycleLength = _
-        Context.Configuration.MorningWeeks + _
-        Context.Configuration.AfternoonWeeks
+        context.configuration.MorningWeeks + _
+        context.configuration.AfternoonWeeks
 
-    currentDate = Context.StartDate
+    currentDate = context.StartDate
 
-    Do While currentDate <= Context.EndDate
+    Do While currentDate <= context.EndDate
 
         weekIndex = DateDiff( _
             Interval:="ww", _
-            Date1:=Context.StartDate, _
+            Date1:=context.StartDate, _
             Date2:=currentDate, _
             FirstDayOfWeek:=vbMonday)
 
         cyclePosition = weekIndex Mod cycleLength
 
-        If cyclePosition < Context.Configuration.MorningWeeks Then
-            shiftCode = SHIFT_CODE_MORNING
+        If cyclePosition < context.configuration.MorningWeeks Then
+            ShiftCode = SHIFT_CODE_MORNING
         Else
-            shiftCode = SHIFT_CODE_AFTERNOON
+            ShiftCode = SHIFT_CODE_AFTERNOON
         End If
 
-        For Each employeeItem In Context.Employees
+        For Each employeeItem In context.Employees
 
             Set employee = employeeItem
 
             If employee.IsActive Then
                 CreateDailyAssignment _
-                    Context:=Context, _
-                    Employee:=employee, _
+                    context:=context, _
+                    employee:=employee, _
                     AssignmentDate:=currentDate, _
-                    ShiftCode:=shiftCode
+                    ShiftCode:=ShiftCode
             End If
 
         Next employeeItem
@@ -256,8 +253,8 @@ End Sub
 ' Creates one shift assignment in memory.
 '===============================================================================
 Private Sub CreateDailyAssignment( _
-    ByVal Context As clsScheduleContext, _
-    ByVal Employee As clsOperari, _
+    ByVal context As clsScheduleContext, _
+    ByVal employee As clsOperari, _
     ByVal AssignmentDate As Date, _
     ByVal ShiftCode As String)
 
@@ -265,7 +262,7 @@ Private Sub CreateDailyAssignment( _
 
     Set assignment = New clsShiftAssignment
 
-    Set assignment.Employee = Employee
+    Set assignment.employee = employee
 
     assignment.AssignmentDate = AssignmentDate
     assignment.ShiftCode = ShiftCode
@@ -273,7 +270,7 @@ Private Sub CreateDailyAssignment( _
     assignment.IsPrimaryDuty = False
     assignment.IsBackupDuty = False
 
-    Context.AddAssignment assignment
+    context.AddAssignment assignment
 
     Set assignment = Nothing
 
@@ -286,14 +283,14 @@ End Sub
 ' InsertIntensiveWeeks() only coordinates the algorithm.
 '===============================================================================
 Private Function BuildIntensiveAssignment( _
-    ByVal Employee As clsOperari, _
+    ByVal employee As clsOperari, _
     ByVal AssignmentDate As Date) As clsShiftAssignment
 
     Dim assignment As clsShiftAssignment
 
     Set assignment = New clsShiftAssignment
 
-    Set assignment.Employee = Employee
+    Set assignment.employee = employee
 
     assignment.AssignmentDate = AssignmentDate
 
@@ -315,16 +312,16 @@ End Function
 ' These dates are candidates for the start of an intensive block.
 '===============================================================================
 Private Function GetIntensiveStartDates( _
-    ByVal Context As clsScheduleContext) As Collection
+    ByVal context As clsScheduleContext) As Collection
 
     Dim result As Collection
     Dim currentDate As Date
 
     Set result = New Collection
 
-    currentDate = Context.StartDate
+    currentDate = context.StartDate
 
-    Do While currentDate <= Context.EndDate
+    Do While currentDate <= context.EndDate
 
         If Weekday(currentDate, vbMonday) = 4 Then
             result.Add currentDate
@@ -349,13 +346,13 @@ End Function
 '   5. Stable collection order.
 '===============================================================================
 Private Function SelectNextIntensiveOperator( _
-    ByVal Context As clsScheduleContext) As clsOperari
+    ByVal context As clsScheduleContext) As clsOperari
 
     Dim employeeItem As Variant
     Dim employee As clsOperari
     Dim selectedEmployee As clsOperari
 
-    For Each employeeItem In Context.Employees
+    For Each employeeItem In context.Employees
 
         Set employee = employeeItem
 
@@ -436,24 +433,24 @@ End Function
 '===============================================================================
 ' Validates the active configuration.
 '===============================================================================
-Private Sub ValidateConfiguration(ByVal Context As clsScheduleContext)
+Private Sub ValidateConfiguration(ByVal context As clsScheduleContext)
 
     Dim configuration As clsConfiguracio
 
-    Set configuration = Context.Configuration
+    Set configuration = context.configuration
 
     If configuration Is Nothing Then
         RaiseRotationError _
             ErrorNumber:=ERR_CONFIGURATION_REQUIRED, _
             ProcedureName:="ValidateConfiguration", _
-            Description:="El context no conté cap configuració."
+            Description:="El context no conte cap configuracio."
     End If
 
     If Not configuration.IsValid Then
         RaiseRotationError _
             ErrorNumber:=ERR_CONFIGURATION_INVALID, _
             ProcedureName:="ValidateConfiguration", _
-            Description:="La configuració activa no és vàlida."
+            Description:="La configuracio activa no es valida."
     End If
 
     Set configuration = Nothing
@@ -463,20 +460,20 @@ End Sub
 '===============================================================================
 ' Validates the planning period.
 '===============================================================================
-Private Sub ValidatePlanningPeriod(ByVal Context As clsScheduleContext)
+Private Sub ValidatePlanningPeriod(ByVal context As clsScheduleContext)
 
-    If Not Context.HasPlanningPeriod Then
+    If Not context.HasPlanningPeriod Then
         RaiseRotationError _
             ErrorNumber:=ERR_PLANNING_PERIOD_REQUIRED, _
             ProcedureName:="ValidatePlanningPeriod", _
-            Description:="El període de planificació no està definit."
+            Description:="El periode de planificacio no esta definit."
     End If
 
-    If Context.EndDate < Context.StartDate Then
+    If context.EndDate < context.StartDate Then
         RaiseRotationError _
             ErrorNumber:=ERR_PLANNING_PERIOD_REQUIRED, _
             ProcedureName:="ValidatePlanningPeriod", _
-            Description:="El període de planificació no és vàlid."
+            Description:="El periode de planificacio no es valid."
     End If
 
 End Sub
@@ -484,32 +481,32 @@ End Sub
 '===============================================================================
 ' Validates the employee collection.
 '===============================================================================
-Private Sub ValidateEmployees(ByVal Context As clsScheduleContext)
+Private Sub ValidateEmployees(ByVal context As clsScheduleContext)
 
     Dim employeeItem As Variant
     Dim employee As clsOperari
 
-    If Context.EmployeeCount = 0 Then
+    If context.EmployeeCount = 0 Then
         RaiseRotationError _
             ErrorNumber:=ERR_EMPLOYEES_REQUIRED, _
             ProcedureName:="ValidateEmployees", _
-            Description:="Cal almenys un operari per generar la planificació."
+            Description:="Cal almenys un operari per generar la planificacio."
     End If
 
-    For Each employeeItem In Context.Employees
+    For Each employeeItem In context.Employees
 
         If Not IsObject(employeeItem) Then
             RaiseRotationError _
                 ErrorNumber:=ERR_INVALID_EMPLOYEE, _
                 ProcedureName:="ValidateEmployees", _
-                Description:="La col·lecció conté un element que no és un objecte."
+                Description:="La colleccio conte un element que no es un objecte."
         End If
 
         If Not TypeOf employeeItem Is clsOperari Then
             RaiseRotationError _
                 ErrorNumber:=ERR_INVALID_EMPLOYEE, _
                 ProcedureName:="ValidateEmployees", _
-                Description:="La col·lecció conté un objecte que no és un operari."
+                Description:="La colleccio conte un objecte que no es un operari."
         End If
 
         Set employee = employeeItem
@@ -518,7 +515,7 @@ Private Sub ValidateEmployees(ByVal Context As clsScheduleContext)
             RaiseRotationError _
                 ErrorNumber:=ERR_INVALID_EMPLOYEE, _
                 ProcedureName:="ValidateEmployees", _
-                Description:="Hi ha un operari amb dades obligatòries incompletes."
+                Description:="Hi ha un operari amb dades obligatories incompletes."
         End If
 
     Next employeeItem
@@ -539,3 +536,5 @@ Private Sub RaiseRotationError( _
         Description:=Description
 
 End Sub
+
+
