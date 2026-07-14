@@ -15,6 +15,8 @@ Option Explicit
 ' Component:    clsShiftAssignment
 ' Layer:        Domain
 '
+' Version:      1.1
+'
 ' Purpose:
 '   Represent one employee assignment for one planning date.
 '
@@ -22,7 +24,8 @@ Option Explicit
 '   - Hold the employee assigned to a date.
 '   - Hold the assigned shift.
 '   - Hold intensive and duty flags.
-'   - Expose a validated domain object to scheduling services.
+'   - Record manual substitutions without recalculating the full schedule.
+'   - Preserve the originally planned employee when an override is applied.
 '
 ' Restrictions:
 '   - No worksheet access.
@@ -36,6 +39,8 @@ Private Const CLASS_NAME As String = "clsShiftAssignment"
 Private Const ERR_EMPLOYEE_REQUIRED As Long = vbObjectError + 1300
 Private Const ERR_INVALID_DATE As Long = vbObjectError + 1301
 Private Const ERR_SHIFT_REQUIRED As Long = vbObjectError + 1302
+Private Const ERR_ORIGINAL_EMPLOYEE_REQUIRED As Long = vbObjectError + 1303
+Private Const ERR_OVERRIDE_REASON_REQUIRED As Long = vbObjectError + 1304
 
 Private mEmployee As clsOperari
 Private mAssignmentDate As Date
@@ -46,6 +51,10 @@ Private mIsPrimaryDuty As Boolean
 Private mIsBackupDuty As Boolean
 Private mNotes As String
 
+Private mIsManualOverride As Boolean
+Private mOriginalEmployeeId As String
+Private mOverrideReason As String
+
 Public Property Get Employee() As clsOperari
     Set Employee = mEmployee
 End Property
@@ -55,7 +64,7 @@ Public Property Set Employee(ByVal Value As clsOperari)
         RaiseAssignmentError _
             ErrorNumber:=ERR_EMPLOYEE_REQUIRED, _
             ProcedureName:="Employee", _
-            Description:="L'operari de l'assignació no pot ser Nothing."
+            Description:="L'operari de l'assignacio no pot ser Nothing."
     End If
 
     Set mEmployee = Value
@@ -71,10 +80,10 @@ Public Property Let AssignmentDate(ByVal Value As Date)
         RaiseAssignmentError _
             ErrorNumber:=ERR_INVALID_DATE, _
             ProcedureName:="AssignmentDate", _
-            Description:="La data de l'assignació no és vàlida."
+            Description:="La data de l'assignacio no es valida."
     End If
 
-    mAssignmentDate = Value
+    mAssignmentDate = DateValue(Value)
     mHasAssignmentDate = True
 End Property
 
@@ -95,7 +104,7 @@ Public Property Let ShiftCode(ByVal Value As String)
         RaiseAssignmentError _
             ErrorNumber:=ERR_SHIFT_REQUIRED, _
             ProcedureName:="ShiftCode", _
-            Description:="El codi de torn és obligatori."
+            Description:="El codi de torn es obligatori."
     End If
 
     mShiftCode = normalizedValue
@@ -133,11 +142,73 @@ Public Property Let Notes(ByVal Value As String)
     mNotes = Trim$(Value)
 End Property
 
+Public Property Get IsManualOverride() As Boolean
+    IsManualOverride = mIsManualOverride
+End Property
+
+Public Property Get OriginalEmployeeId() As String
+    OriginalEmployeeId = mOriginalEmployeeId
+End Property
+
+Public Property Get OverrideReason() As String
+    OverrideReason = mOverrideReason
+End Property
+
+'===============================================================================
+' Marks the assignment as a manual substitution.
+'
+' The Employee property must already contain the replacement employee.
+' OriginalEmployeeId identifies the employee initially planned by the motor.
+'===============================================================================
+Public Sub MarkAsManualOverride( _
+    ByVal OriginalEmployeeId As String, _
+    ByVal OverrideReason As String)
+
+    Dim normalizedEmployeeId As String
+    Dim normalizedReason As String
+
+    normalizedEmployeeId = Trim$(OriginalEmployeeId)
+    normalizedReason = Trim$(OverrideReason)
+
+    If Len(normalizedEmployeeId) = 0 Then
+        RaiseAssignmentError _
+            ErrorNumber:=ERR_ORIGINAL_EMPLOYEE_REQUIRED, _
+            ProcedureName:="MarkAsManualOverride", _
+            Description:="Cal indicar l'operari planificat original."
+    End If
+
+    If Len(normalizedReason) = 0 Then
+        RaiseAssignmentError _
+            ErrorNumber:=ERR_OVERRIDE_REASON_REQUIRED, _
+            ProcedureName:="MarkAsManualOverride", _
+            Description:="Cal indicar el motiu del canvi manual."
+    End If
+
+    mOriginalEmployeeId = normalizedEmployeeId
+    mOverrideReason = normalizedReason
+    mIsManualOverride = True
+End Sub
+
+'===============================================================================
+' Removes manual-override metadata from the assignment.
+'===============================================================================
+Public Sub ClearManualOverride()
+    mIsManualOverride = False
+    mOriginalEmployeeId = vbNullString
+    mOverrideReason = vbNullString
+End Sub
+
 Public Function IsValid() As Boolean
     IsValid = _
         Not mEmployee Is Nothing _
         And mHasAssignmentDate _
         And Len(mShiftCode) > 0
+
+    If IsValid And mIsManualOverride Then
+        IsValid = _
+            Len(mOriginalEmployeeId) > 0 _
+            And Len(mOverrideReason) > 0
+    End If
 End Function
 
 Public Function Clone() As clsShiftAssignment
@@ -162,6 +233,12 @@ Public Function Clone() As clsShiftAssignment
     assignmentCopy.IsBackupDuty = mIsBackupDuty
     assignmentCopy.Notes = mNotes
 
+    If mIsManualOverride Then
+        assignmentCopy.MarkAsManualOverride _
+            OriginalEmployeeId:=mOriginalEmployeeId, _
+            OverrideReason:=mOverrideReason
+    End If
+
     Set Clone = assignmentCopy
 End Function
 
@@ -170,7 +247,7 @@ Private Sub EnsureAssignmentDateIsDefined()
         RaiseAssignmentError _
             ErrorNumber:=ERR_INVALID_DATE, _
             ProcedureName:="EnsureAssignmentDateIsDefined", _
-            Description:="La data de l'assignació encara no està definida."
+            Description:="La data de l'assignacio encara no esta definida."
     End If
 End Sub
 
