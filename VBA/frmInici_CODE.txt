@@ -1,0 +1,13 @@
+Option Explicit
+
+Private Sub UserForm_Initialize()
+
+    modUIBuilder.BuildMainForm Me
+
+End Sub
+
+Private Sub UserForm_Terminate()
+
+    modUIBuilder.ReleaseMainForm
+
+End Sub

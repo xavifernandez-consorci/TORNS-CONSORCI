@@ -1,0 +1,22 @@
+Option Explicit
+
+Private mDashboard As clsDashboard
+
+Private Sub UserForm_Initialize()
+
+    Set mDashboard = New clsDashboard
+
+    mDashboard.Initialize Me
+    mDashboard.Refresh
+
+End Sub
+
+Private Sub UserForm_Terminate()
+
+    If Not mDashboard Is Nothing Then
+        mDashboard.Shutdown
+    End If
+
+    Set mDashboard = Nothing
+
+End Sub
